@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="tl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SKU Live Scanner</title>
+<meta name="theme-color" content="#155eaa">
+<meta name="application-name" content="SKU Live Scanner">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{color-scheme:light;--blue:#155eaa;--ink:#14212f;--gray:#6b7280;--line:#cbd5e1}
+  *{box-sizing:border-box}
+  body{margin:0;background:#f7f9fc;color:var(--ink);font-family:Arial,Helvetica,sans-serif}
+  main{width:min(100%,440px);margin:auto;padding:16px 18px 42px;background:white;min-height:100dvh}
+  h1{font-size:23px;text-align:center;margin:8px 0 5px}
+  .subtitle{font-size:13px;text-align:center;color:var(--gray);margin:0 0 18px}
+  .section-title{font-weight:700;text-align:center;font-size:20px;margin:12px 0 8px}
+  #reader{min-height:190px;background:#141b29;border-radius:16px;overflow:hidden;color:white}
+  #reader video{object-fit:cover}
+  .camera-bar{display:flex;gap:9px;margin:10px 0 14px}
+  button{border:0;border-radius:10px;padding:13px 16px;font-size:16px;font-weight:700;cursor:pointer}
+  #startBtn{background:var(--blue);color:#fff;flex:1}
+  #stopBtn{background:#e5e7eb;color:#111827;flex:1}
+  button:disabled{opacity:.45;cursor:default}
+  label.field{display:block;margin:12px 0;font-size:17px;font-weight:600;text-align:center}
+  input[type=text],input[type=number],input[type=url],input[type=password]{display:block;width:100%;padding:12px;border:2px solid #1f2937;border-radius:5px;font-size:21px;text-align:center;margin-top:5px;background:white}
+  input[type=number]{appearance:textfield}
+  #saveBtn{width:80%;display:block;margin:19px auto 10px;border:2px solid #111;background:#fff;color:#111;font-size:24px;border-radius:2px}
+  .check{display:flex;justify-content:center;align-items:center;gap:8px;font-size:15px;margin:9px 0}
+  .check input{width:19px;height:19px}
+  #status{padding:11px 12px;border-radius:8px;text-align:center;font-weight:700;font-size:14px;background:#eff6ff;color:#1d4ed8;min-height:42px;overflow-wrap:anywhere}
+  #status.success{background:#ecfdf5;color:#047857}
+  #status.error{background:#fef2f2;color:#b91c1c}
+  details{border:1px solid var(--line);border-radius:10px;padding:12px;margin:16px 0;font-size:14px}
+  summary{font-weight:700;cursor:pointer}
+  details input{font-size:14px !important;text-align:left !important;border:1px solid #94a3b8 !important}
+  details label{display:block;margin-top:11px;font-weight:600}
+  #configBtn{width:100%;background:#e0ebfa;color:#153e75;margin:12px 0 4px}
+  .hint{font-size:12px;color:var(--gray);line-height:1.5;margin-top:6px}
+  #counter{font-size:13px;text-align:center;color:var(--gray);margin:6px 0}
+  #installBtn{width:100%;background:#dbedff;color:#124777;margin:0 0 10px;font-size:15px}
+  #installNote{font-size:12px;text-align:center;color:var(--gray);margin:0 0 12px}
+  .pill{display:inline-block;background:#ecfdf5;color:#047857;border-radius:14px;padding:4px 10px;font-size:12px}
+  @media(display-mode:standalone){ #installBtn,#installNote{display:none} }
+</style>
+</head>
+<body>
+<main>
+  <h1>SKU Live Scanner</h1>
+  <p class="subtitle">Itutok ang barcode • Auto scan • Auto-save sa Google Sheets</p>
+  <button id="installBtn" type="button">📲 INSTALL SA ANDROID</button>
+  <div id="installNote">Para sa app icon sa phone: Chrome ⋮ → Add to Home screen → Install</div>
+
+  <div class="section-title">Scanner Camera</div>
+  <div id="reader"></div>
+  <div class="camera-bar">
+    <button type="button" id="startBtn">▶ START CAMERA</button>
+    <button type="button" id="stopBtn" disabled>■ STOP</button>
+  </div>
+
+  <form id="scanForm">
+    <label class="field">Input SKU
+      <input id="sku" type="text" autocomplete="off" required>
+    </label>
+    <label class="field">Location (optional)
+      <input id="location" type="text" autocomplete="off">
+    </label>
+    <label class="field">Qty (optional)
+      <input id="qty" type="number" min="1" step="1" placeholder="Blank = walang quantity">
+    </label>
+    <label class="check"><input id="autoSave" type="checkbox" checked> Auto-save pagkatapos mag-scan</label>
+    <button id="saveBtn" type="submit">ENTER</button>
+  </form>
+  <div id="status" role="status" aria-live="polite">I-set up muna ang Google Sheets connection.</div>
+  <div id="counter">Successful saves: <span id="count">0</span></div>
+
+  <details id="settings">
+    <summary>⚙ Google Sheets connection (one-time setup)</summary>
+    <label for="endpoint">Apps Script Web App URL (/exec)</label>
+    <input id="endpoint" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+    <label for="secret">Scanner Access Key</label>
+    <input id="secret" type="password" autocomplete="off" placeholder="Same key as Apps Script Script properties">
+    <button type="button" id="configBtn">SAVE CONNECTION</button>
+    <p class="hint">Settings ay naka-save lang sa browser ng device na ito. Huwag ilagay ang Access Key sa public HTML o GitHub repo.</p>
+  </details>
+  <p class="hint">Para i-scan muli ang parehong SKU, ilayo muna ang barcode sa camera nang ~1.5 segundo, pagkatapos ay itutok ulit. Kailangan ng internet para makapag-save sa Google Sheets.</p>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+let scanner=null, running=false, starting=false, busy=false, successful=0;
+let lastBarcode='', lastSeenAt=0;
+let deferredInstallPrompt=null;
+function status(message, type=''){$('status').textContent=message;$('status').className=type;}
+function updateButtons(){ $('startBtn').disabled=starting||running; $('stopBtn').disabled=starting||!running; }
+
+function updateConnection() {
+  let url=$('endpoint').value.trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec(?:\?.*)?$/.test(url)){
+    status('Ilagay ang tamang Web App URL na nagtatapos sa /exec.','error');return false;
+  }
+  url=url.split('?')[0];
+  const key=$('secret').value.trim();
+  if(!key){status('Ilagay ang Scanner Access Key.','error');return false;}
+  localStorage.setItem('sku_scan_endpoint',url);
+  localStorage.setItem('sku_scan_key',key);
+  $('endpoint').value=url;
+  $('settings').open=false;
+  status('Connection saved. Puwede nang mag-scan.');
+  return true;
+}
+$('configBtn').addEventListener('click',updateConnection);
+$('endpoint').value=localStorage.getItem('sku_scan_endpoint')||'';
+$('secret').value=localStorage.getItem('sku_scan_key')||'';
+$('location').value=localStorage.getItem('sku_scan_location')||'';
+$('location').addEventListener('change',()=>localStorage.setItem('sku_scan_location',$('location').value));
+if(!$('endpoint').value||!$('secret').value) $('settings').open=true;
+else status('Ready. Pindutin ang START CAMERA at i-allow ang camera.');
+
+function jsonpSave(payload) {
+  return new Promise((resolve,reject)=>{
+    const url=localStorage.getItem('sku_scan_endpoint')||'';
+    const key=localStorage.getItem('sku_scan_key')||'';
+    if(!url||!key){reject(new Error('I-save muna ang Google Sheets connection.'));return;}
+    const cb='scanCB_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    let done=false;
+    const tag=document.createElement('script');
+    const timer=setTimeout(()=>finish(new Error('Save timeout. Tingnan ang Google Sheets bago mag-rescan.')),25000);
+    function finish(error,value){
+      if(done)return;done=true;clearTimeout(timer);
+      tag.remove();delete window[cb];
+      if(error)reject(error);else resolve(value);
+    }
+    window[cb]=response=>finish(null,response);
+    const p=new URLSearchParams({action:'save',callback:cb,key,
+      sku:payload.sku,location:payload.location,qty:payload.qty,
+      nonce:Date.now().toString()});
+    tag.onerror=()=>finish(new Error('Hindi maabot ang Apps Script. Check URL, access at internet.'));
+    tag.src=url+'?'+p.toString();
+    document.head.appendChild(tag);
+  });
+}
+
+async function saveSKU(){
+  if(busy)return;
+  const sku=$('sku').value.trim();
+  const location=$('location').value.trim();
+  const qty=$('qty').value.trim();
+  if(!sku){status('Input SKU ang required.','error');return;}
+  if(qty && (!Number.isSafeInteger(Number(qty))||Number(qty)<=0)){
+    status('Qty must be a positive whole number.','error');return;
+  }
+  busy=true;$('saveBtn').disabled=true;
+  status('Saving '+sku+' ...');
+  try{
+    const response=await jsonpSave({sku,location,qty});
+    if(!response||!response.ok) throw new Error((response&&response.error)||'Save rejected.');
+    successful++;$('count').textContent=String(successful);
+    status('✓ SAVED — '+sku+' | ROW '+response.row,'success');
+    $('sku').value='';
+    localStorage.setItem('sku_scan_location',location);
+    if(navigator.vibrate)navigator.vibrate(80);
+  }catch(e){
+    status('SAVE FAILED: '+e.message,'error');
+    // Keep SKU for manual retry; do not automatically submit again.
+  }finally{
+    busy=false;$('saveBtn').disabled=false;
+  }
+}
+$('scanForm').addEventListener('submit',e=>{e.preventDefault();saveSKU();});
+
+function onDetected(text) {
+  const code=String(text||'').trim();
+  if(!code)return;
+  const now=Date.now();
+  // Don't repeatedly save a barcode that remains in view.
+  const sameStillVisible=code===lastBarcode && now-lastSeenAt<1500;
+  if (busy || sameStillVisible) {
+    if (sameStillVisible) lastSeenAt=now;
+    return;
+  }
+  lastBarcode=code;
+  lastSeenAt=now;
+  $('sku').value=code;
+  status('Detected: '+code);
+  if($('autoSave').checked) saveSKU();
+}
+async function startCamera(){
+  if(starting||running)return;
+  if(!window.isSecureContext||!navigator.mediaDevices){
+    status('Camera needs an HTTPS page in Chrome. Open the GitHub Pages URL.','error');return;
+  }
+  if(!window.Html5Qrcode){
+    status('Scanner library did not load. Check internet connection.','error');return;
+  }
+  starting=true;updateButtons();status('Opening camera. Allow camera permission.');
+  try{
+    if(!scanner)scanner=new Html5Qrcode('reader',{
+      formatsToSupport:[
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.CODE_93,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.CODABAR,
+        Html5QrcodeSupportedFormats.QR_CODE
+      ],
+      verbose:false
+    });
+    await scanner.start(
+      {facingMode:'environment'},
+      {fps:12,qrbox:(w,h)=>({width:Math.max(100,Math.min(280,Math.floor(w*0.9))),height:Math.max(80,Math.min(150,Math.floor(h*0.65)))})},
+      onDetected,
+      ()=>{}
+    );
+    running=true;status('Camera ON — itutok ang barcode sa frame.','success');
+  }catch(e){
+    status('Cannot start camera: '+(e.message||String(e))+'. Check Chrome camera permission.','error');
+  }finally{starting=false;updateButtons();}
+}
+async function stopCamera(){
+  if(!running||!scanner)return;
+  starting=true;updateButtons();
+  try{await scanner.stop();running=false;status('Camera stopped.');}
+  catch(e){status('Camera stop error: '+(e.message||String(e)),'error');}
+  finally{starting=false;updateButtons();}
+}
+
+// PWA installation (works after hosting these files via HTTPS)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => {
+      console.warn('Service worker registration error:', err);
+    });
+  });
+}
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt=event;
+  $('installBtn').textContent='📲 INSTALL SKU SCANNER APP';
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt=null;
+  $('installBtn').hidden=true;
+  $('installNote').textContent='App installed on Android.';
+});
+$('installBtn').addEventListener('click', async () => {
+  if (deferredInstallPrompt) {
+    const installEvent=deferredInstallPrompt;
+    deferredInstallPrompt=null;
+    await installEvent.prompt();
+    const choice=await installEvent.userChoice;
+    if(choice.outcome==='accepted'){
+      $('installNote').textContent='Installation started.';
+    }
+  } else {
+    $('installNote').textContent='Sa Chrome: ⋮ → Add to Home screen → Install app. Kailangan naka-host sa HTTPS (hindi file://).';
+  }
+});
+
+$('startBtn').addEventListener('click',startCamera);
+$('stopBtn').addEventListener('click',stopCamera);
+// Try to start automatically when the page opens; browser may still require a tap.
+window.addEventListener('load',()=>{if(localStorage.getItem('sku_scan_endpoint'))startCamera();});
+</script>
+</body>
+</html>
